@@ -1,0 +1,14 @@
+node_modules/
+.next/
+coverage/
+.DS_Store
+*.log
+*.tsbuildinfo
+.env*
+!.env.example
+data/quota_store.json
+**/data/quota_store.json
+**/data/council_lockout_store.json
+Backup-*/
+client_secret*.json
+*.apps.googleusercontent.com.json

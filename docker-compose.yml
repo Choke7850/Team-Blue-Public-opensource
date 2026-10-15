@@ -1,0 +1,138 @@
+name: team-blue-sports
+
+services:
+  # Database PostgreSQL (Port 12005)
+  postgres:
+    image: postgres:16-alpine
+    container_name: team_blue_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-team_blue_db}
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=4GB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "max_locks_per_transaction=256"
+      - "-c"
+      - "statement_timeout=15000"
+      - "-c"
+      - "idle_in_transaction_session_timeout=10000"
+    ports:
+      - "127.0.0.1:12005:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U app_admin -d team_blue_db" ]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  # Router / Reverse Proxy
+  #  Port 3006: Admin
+  #  Port 3007: Staff
+  #  Port 3008: User
+  app:
+    image: nginx:alpine
+    container_name: team_blue_router
+    restart: always
+    ports:
+      - "10003:3006"
+      - "10002:3007"
+      - "10004:3008"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app_1_admin
+      - app_2_staff
+      - app_3_user
+
+  # App 1 - Admin (Port 3006)
+  app_1_admin:
+    build:
+      context: ./APP-1-Admin
+      dockerfile: Dockerfile
+    container_name: team_blue_admin
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file:
+      - ./.env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./APP-1-Admin/data:/app/data
+
+  # App 2 - Staff (Port 3007)
+  app_2_staff:
+    build:
+      context: ./APP-2-Staff
+      dockerfile: Dockerfile
+    container_name: team_blue_staff
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file:
+      - ./.env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./APP-2-Staff/data:/app/data
+
+  # App 3 - User (Port 3008)
+  app_3_user:
+    build:
+      context: ./APP-3-User
+      dockerfile: Dockerfile
+    container_name: team_blue_user
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file:
+      - ./.env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./APP-3-User/data:/app/data
+
+  # Cloudflare Tunnel Service (Optional)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: team_blue_tunnel
+    restart: always
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app_1_admin
+      - app_2_staff
+      - app_3_user
+
+volumes:
+  pgdata:
